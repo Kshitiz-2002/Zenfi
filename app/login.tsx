@@ -1,23 +1,59 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native'
 import React, { useState } from 'react'
 import { defaultStyles } from '@/constants/Styles'
 import Colors from '@/constants/Colors'
-import { Link } from 'expo-router'
+import { Link, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import { isClerkAPIResponseError, useSignIn } from '@clerk/clerk-expo'
 
 enum SignInType {
-  Phone, Email, Google, Apple
+  Phone,
+  Email,
+  Google,
+  Apple
 }
 
 const Page = () => {
-  const [countryCode, setCountryCode] = useState('+49');
+  const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setphoneNumber] = useState('');
   const keyboardVerticalOffset = Platform.OS == 'ios' ? 80 : 0;
-  const onSignin = async (type: SignInType) => {
-    if (type === SignInType.Phone) {
+  const { signIn } = useSignIn();
+  const router = useRouter();
 
+  const onSignIn = async (type: SignInType) => {
+    if (type === SignInType.Phone) {
+      try {
+        const fullPhoneNumber = `${countryCode}${phoneNumber}`;
+
+        const { supportedFirstFactors } = await signIn!.create({
+          identifier: fullPhoneNumber,
+        });
+        const firstPhoneFactor: any = supportedFirstFactors.find((factor: any) => {
+          return factor.strategy === 'phone_code';
+        });
+
+        const { phoneNumberId } = firstPhoneFactor;
+
+        await signIn!.prepareFirstFactor({
+          strategy: 'phone_code',
+          phoneNumberId,
+        });
+
+        router.push({
+          pathname: '/verify/[phone]',
+          params: { phone: fullPhoneNumber, signin: 'true' },
+        });
+      } catch (err) {
+        console.log('error', JSON.stringify(err, null, 2));
+        if (isClerkAPIResponseError(err)) {
+          if (err.errors[0].code === 'form_identifier_not_found') {
+            Alert.alert('Error', err.errors[0].message);
+          }
+        }
+      }
     }
   };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior='padding' keyboardVerticalOffset={keyboardVerticalOffset}>
       <View style={defaultStyles.container}>
@@ -48,7 +84,7 @@ const Page = () => {
           phoneNumber != '' ? styles.enabled : styles.disabled,
           { marginBottom: 20 }
         ]}
-          onPress={() => onSignin(SignInType.Phone)}>
+          onPress={() => onSignIn(SignInType.Phone)}>
           <Text style={defaultStyles.buttonText}>Continue</Text>
         </TouchableOpacity>
 
@@ -59,19 +95,19 @@ const Page = () => {
         </View>
         <TouchableOpacity
           style={[defaultStyles.pillButton, { flexDirection: 'row', gap: 16, marginTop: 20, backgroundColor: '#fff' }]}
-          onPress={() => onSignin(SignInType.Email)}>
+          onPress={() => onSignIn(SignInType.Email)}>
           <Ionicons name='mail' size={24} color={'#000'} />
           <Text style={[defaultStyles.buttonText, { color: '#000' }]}>Continue with email</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[defaultStyles.pillButton, { flexDirection: 'row', gap: 16, marginTop: 20, backgroundColor: '#fff' }]}
-          onPress={() => onSignin(SignInType.Google)}>
+          onPress={() => onSignIn(SignInType.Google)}>
           <Ionicons name='logo-google' size={24} color={'#000'} />
           <Text style={[defaultStyles.buttonText, { color: '#000' }]}>Continue with Google</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[defaultStyles.pillButton, { flexDirection: 'row', gap: 16, marginTop: 20, backgroundColor: '#fff' }]}
-          onPress={() => onSignin(SignInType.Apple)}>
+          onPress={() => onSignIn(SignInType.Apple)}>
           <Ionicons name='logo-apple' size={24} color={'#000'} />
           <Text style={[defaultStyles.buttonText, { color: '#000' }]}>Continue with Apple</Text>
         </TouchableOpacity>
